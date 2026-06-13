@@ -1,0 +1,23 @@
+[project]
+name = "gzipt"
+version = "0.3.0"
+description = "gzip as a language model: beam-search text generation by compression"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+gzipt = "gzipt.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gzipt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
