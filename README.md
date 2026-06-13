@@ -49,11 +49,11 @@ result: a generic compressor's hidden language model is an n-gram.
 ## Install & run
 
 ```bash
-uv run gzipt --help                 # run without installing
-uv run --extra test pytest          # tests
+uv run gzipt --help              # via the installed script
+uv run python gzipt.py --help    # or just run the file directly
 ```
 
-Pure standard library (just `zlib`); requires Python ≥ 3.10.
+One file, pure standard library (just `zlib`); requires Python ≥ 3.10.
 
 ## Usage
 
@@ -89,9 +89,11 @@ Each step runs a beam search `horizon` bytes deep and commits that span:
    ahead is what lets the real signal register and avoids the greedy whitespace
    collapse.
 3. **Loop guard.** During the search, a candidate is penalized `--repeat-penalty`
-   bytes for every `--no-repeat`-gram it would repeat (from earlier output or from
-   itself). This is baked into the score, so the beam actively *avoids* loops
-   rather than discovering only looping spans — the single biggest quality fix.
+   bytes for every `--no-repeat`-gram that repeats something in the *recent* output
+   window. Baked into the score, this makes the beam actively *avoid* immediate
+   loops — the single biggest quality fix. It is scoped to recent output on
+   purpose: a speaker name or common word may recur later, once it scrolls out of
+   that window; only saying-again-what-you-just-said is blocked.
 4. **Commit.** `--temperature 0` commits the best-scoring span; a positive
    temperature samples the finalists for variety.
 
@@ -112,8 +114,9 @@ The bottleneck is compression, reused three ways:
   too large → the fixed-width beam degrades into copying one passage verbatim.
   ~20–28 is the sweet spot.
 - **`--beam-width`** — wider keeps more good paths alive, costs linearly more.
-- **`--no-repeat` / `--repeat-penalty`** — the loop guard. If output still loops,
-  raise the penalty; set `--no-repeat 0` to turn it off and see the raw behavior.
+- **`--no-repeat` / `--repeat-penalty`** — the loop guard (forbids repeating an
+  n-gram within the recent window). If output still loops, raise the penalty; set
+  `--no-repeat 0` to turn it off and see the raw, loop-prone behavior.
 - **`--temperature`** — higher = more varied (and breaks remaining loops), lower =
   more compressible/literal. 0.3–0.7 is a good range.
 - **`--tail`** — bytes of self-copy allowed; smaller = less looping, more disjoint.
@@ -129,12 +132,8 @@ can still produce short ones — raise `--temperature` or `--repeat-penalty`.
 
 ```
 gzipt/
-├── gzipt/
-│   ├── __init__.py
-│   ├── model.py   # clone-accelerated scoring + beam-search generation
-│   └── cli.py     # the gzipt command
-├── tests/
-│   └── test_gzipt.py
+├── gzipt.py        # everything: scoring, beam-search generation, CLI
+├── data/           # example corpora
 ├── README.md
 └── pyproject.toml
 ```
