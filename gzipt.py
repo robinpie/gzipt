@@ -1,29 +1,4 @@
-"""gzip as a language model: beam-search text generation by compression.
-
-Compression is prediction. A continuation that gzip "expected" — because it
-echoes text already in its window — compresses to almost nothing, so *compressed
-length is a score*. We generate by beam search over byte sequences: keep the
-``beam_width`` most-compressible partial continuations, extend each by one byte,
-prune, and after ``horizon`` bytes commit the best span and repeat.
-
-The corpus primes gzip's 32 KiB window and is the model's only knowledge; gzip is
-just a length oracle over it. Mechanically this makes gzip a fuzzy n-gram over the
-corpus: DEFLATE predicts the next bytes by matching the recent context against the
-window, which is exactly what an n-gram does. So generation reads like recombined
-corpus fragments — fluent locally, a collage globally.
-
-Two things make it practical:
-
-* **encoder-state cloning** — the shared context is compressed once and
-  ``.copy()``-ed per candidate, so each pays only for its own few bytes. This is
-  byte-for-byte identical to ``len(zlib.compress(context + seq))`` but far cheaper
-  (the match search over the context runs once, not once per candidate). zlib is
-  the only stdlib compressor that exposes this.
-* the candidate byte set is restricted to bytes that occur in the corpus, and
-  candidate scoring is optionally threaded (``zlib`` releases the GIL).
-
-Run ``python gzipt.py --help`` (or ``uv run gzipt --help``) for the CLI.
-"""
+"""gzip as a language model: beam-search text generation by compression."""
 
 from __future__ import annotations
 
@@ -151,8 +126,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Beam-search knobs.
     p.add_argument("--horizon", type=int, default=24,
-                   help="bytes looked ahead and committed per beam search "
-                        "(default 24; too small collapses, too large just copies)")
+                   help="bytes looked ahead and committed per beam search")
     p.add_argument("--beam-width", type=int, default=32,
                    help="partial continuations kept each step (default 32)")
     p.add_argument("--temperature", type=float, default=0.5,
@@ -168,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--level", type=int, default=9, help="gzip level 0-9 (default 9)")
     p.add_argument("--workers", type=int, default=8,
                    help="threads for candidate scoring; zlib releases the GIL (default 8)")
-    p.add_argument("--seed", type=int, default=None, help="RNG seed (for --temperature > 0)")
+    p.add_argument("--seed", type=int, default=3, help="RNG seed (for --temperature > 0)")
 
     args = p.parse_args(argv)
 
