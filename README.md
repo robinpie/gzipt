@@ -52,3 +52,36 @@ gzipt \
   --window 30000 \        # corpus bytes shown to gzip (<= 32768)
   --workers 8             # threads for scoring (zlib releases the GIL)
 ```
+
+### Other compressors
+
+`--algo` swaps the compressor that *is* the model (`zlib` default, plus `bz2`,
+`lzma`, `zstd`, `brotli`). Only `zlib` can clone its encoder state, so the
+others recompress each candidate and want a smaller `--window`. In the default
+byte-level mode they also tend to degenerate: a one-byte difference is below
+their compressed-length granularity, so the beam goes blind and repeats the
+cheapest filler byte.
+
+### Secondary mode: `--mode spans`
+
+A second generator that re-ranks whole continuation *spans* pulled from the
+corpus (via an n-gram lookup) instead of inventing one byte at a time. Scoring
+multi-byte spans clears that granularity floor, so the coarse compressors
+produce coherent text:
+
+```bash
+gzipt --corpus data/tinyshakespeare.txt --prompt $'MENENIUS:\n' \
+  --mode spans --algo bz2 --span-len 8
+```
+```
+MENENIUS:
+I tell you, friends, most charitable care
+Have the patricians of you. For your wants,
+Your suffering in this dearth, you
+```
+
+`--span-len` is the copy/recombine knob (higher = longer verbatim quotes). The
+trade-off is that the compressor only *ranks* real corpus text rather than
+generating it, so the result copies more and emerges less — which is why the
+byte-level mode above stays the main event.
+
