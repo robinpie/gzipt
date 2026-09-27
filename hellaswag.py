@@ -15,6 +15,11 @@ import zlib
 from compression import zstd
 from concurrent.futures import ThreadPoolExecutor
 
+import ppm
+
+# PPM context order, set from --ppm-order in main() before evaluate().
+PPM_ORDER = 6
+
 
 def load(path: str) -> list[dict]:
     return [json.loads(line) for line in open(path)]
@@ -107,7 +112,16 @@ def _zstd_scorer(ctx: bytes, endings: list[bytes], level: int = 9):
     return [len(comp(ctx + eb)) - head for eb in endings]
 
 
-SCORERS = {"zlib": _zlib_scorer, "lzma": _lzma_scorer, "zstd": _zstd_scorer}
+def _ppm_scorer(ctx: bytes, endings: list[bytes], level: int = 9):
+    # Fractional-bit code length (-log2 P) from a PPM-C model built on ctx.
+    # No byte-quantization, and an explicit order-N context model rather than
+    # an LZ match window -- the comparison point for "is the entropy coder the
+    # lever?" Returns bits; per_char normalization still applies.
+    return ppm.hellaswag_scorer(ctx, endings, level, order=PPM_ORDER)
+
+
+SCORERS = {"zlib": _zlib_scorer, "lzma": _lzma_scorer, "zstd": _zstd_scorer,
+           "ppm": _ppm_scorer}
 
 
 def score_example(prime: bytes, r: dict, scorer, level: int = 9):
@@ -159,9 +173,14 @@ def main():
                    help="[topic mode] drop peers sharing the test item's source_id "
                         "(prevents sibling-paragraph leakage)")
     p.add_argument("--level", type=int, default=9)
+    p.add_argument("--ppm-order", type=int, default=6,
+                   help="[algo=ppm] PPM context order (default 6)")
     p.add_argument("--limit", type=int, default=0, help="cap #test examples (0 = all)")
     p.add_argument("--workers", type=int, default=8)
     args = p.parse_args()
+
+    global PPM_ORDER
+    PPM_ORDER = args.ppm_order
 
     rows = load(args.data)
 
@@ -180,7 +199,11 @@ def main():
     if args.limit:
         items = items[: args.limit]
 
+    primes = [len(p) for p, _ in items]
+    avg_prime = sum(primes) / len(primes) if primes else 0
     print(f"algo={args.algo} | {desc} | test: {len(items)} examples")
+    print(f"prime bytes: mean={avg_prime:.0f} max={max(primes) if primes else 0} "
+          f"(cap={args.window})")
     t = time.perf_counter()
     acc = evaluate(items, SCORERS[args.algo], args.level, args.workers)
     dt = time.perf_counter() - t
